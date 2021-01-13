@@ -1,0 +1,37 @@
+{
+"ProgramName":"Notepad++",
+"LogFile":"",
+"BlockExe":[],
+"PreTask":[],
+"Uninstall":[
+					 {
+						"File":"Notepad++",
+						"Parameter":"/S",
+						"ExitCodes":["0"]
+					}
+				],
+"Task":[],
+"Install":[
+					{
+						"File":"npp.7.9.1.Installer.exe",
+						"Parameter":"/S",
+						"ExitCodes":["0"]
+					},{
+					"64Bit":[{
+						"File":"64.exe",
+						"Parameter":"/S",
+						"ExitCodes":["0"]
+					}
+					]},{
+					"32Bit":[{
+						"File":"32.exe",
+						"Parameter":"/S",
+						"ExitCodes":["0"]
+					}
+					]}
+				],
+"PostTask":[],
+"ErrorTask":[],
+"RebootRequiredExitCodes":["1610","3010"],
+"ProcessTimeOut":"300"
+}
