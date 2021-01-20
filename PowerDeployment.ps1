@@ -17,11 +17,11 @@ param (
 	[Alias('config', 'c')]
 	[String]$ConfigFile = 'config.json',
 	[String]$BlockedExe,
-	[switch]$Silent = $false,
+	[ValidateSet('none', 'basic', 'full')]
+	[String]$UI = 'basic',
 	[switch]$ForceReboot = $false
 	
 )
-
 # Load assembly
 Add-Type -AssemblyName "System.Windows.Forms"
 
@@ -38,7 +38,7 @@ function _Get-Process()
 		$_.Product -match $Name -or $_.Description -match $Name
 	}
 	return $process
-}91
+}
 # Function to execute an exe
 function Execute_ExeFile()
 {
@@ -50,14 +50,18 @@ function Execute_ExeFile()
 	)
 	if (-not $arguments)
 	{
-		$Proc = Start-Process $file -Wait -PassThru
+		$Proc = Start-Process $file -PassThru
 	}
 	else
 	{
 		$Proc = Start-Process $file -ArgumentList $arguments -PassThru
 	}
 	Wait-Process -InputObject $Proc -Timeout $ProcessTimeOut -ErrorAction SilentlyContinue
-	
+	if ($Proc.HasExited -eq $false)
+	{
+		Write-Log -Message ([String]::Format($LogTable.RunExeFileTimeout, $file, $ProcessTimeOut))
+		Stop-Process -InputObject $Proc -Force
+	}
 	# Write log
 	Write-Log -Message ([String]::Format($LogTable.RunExeFileComplete, $file, $Proc.ExitCode))
 	# test if exitcode is greater or equal 1 -> error
@@ -72,7 +76,7 @@ function Execute_ExeFile()
 function Process_Bar()
 {
 	param (
-		[String]$activity = $stringTable.MainActivity,
+		[String]$activity = 'Installation',
 		[String]$status,
 		[Parameter(Mandatory = $true)]
 		[Int32]$percent
@@ -110,13 +114,69 @@ function Read-Answer
 {
 	param (
 		[Parameter(Mandatory = $True)]
-		[Alias('Text')]
 		[string]$Messsage,
-		[System.Windows.Forms.MessageBoxIcon]$Icon = [System.Windows.Forms.MessageBoxIcon]::None,
-		[System.Windows.Forms.MessageBoxButtons]$Buttons = [System.Windows.Forms.MessageBoxButtons]::OKCancel,
-		[string]$Title = $customizedData.Company
+		[ValidateSet('OK', 'YesNo')]
+		$Buttons,
+		[string]$Title = [System.IO.Path]::GetFileNameWithoutExtension($InvocationExe)
 	)
-	[System.Windows.Forms.MessageBox]::Show($Messsage, $Title, $Buttons, $Icon, [System.Windows.Forms.MessageBoxDefaultButton]::Button1, [System.Windows.Forms.MessageBoxOptions]::DefaultDesktopOnly)
+	$raw = @"
+<Window x:Name="PowerDeploy" x:Class="WpfApp1.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:WpfApp1"
+        mc:Ignorable="d"
+        Title="{0}" Height="250" Width="400" VerticalAlignment="Top" HorizontalAlignment="Left" WindowStartupLocation="CenterScreen" ResizeMode="NoResize">
+    <Grid x:Name="ContentGrid">
+        <Image x:Name="image" Margin="10,10,0,0" HorizontalAlignment="Left" Width="100" Height="50" VerticalAlignment="Top" Source="{1}"/>
+        {2}
+    </Grid>
+</Window>
+"@
+	
+	switch ($Buttons)
+	{
+		'OK' {
+			$Button = '<Button x:Name="ButtonOK" Content="{0}" Margin="127,0,121,20" Height="20" VerticalAlignment="Bottom" HorizontalAlignment="Center" Width="75" Background="White"/>' -f $stringTable.ok
+		}
+		'YesNo' {
+			$Button = @'
+        <Button x:Name="ButtonYes" Content="{0}" HorizontalAlignment="Left" Margin="20,0,0,20" Width="75" IsDefault="True" Height="20" VerticalAlignment="Bottom" Background="White"/>
+        <Button x:Name="ButtonNo" Content="{1}" Margin="0,0,20,20" IsCancel="True" Height="20" VerticalAlignment="Bottom" HorizontalAlignment="Right" Width="75" Background="White"/>
+'@ -f $stringTable.yes, $stringTable.no
+		}
+	}
+	
+	$Label = '<Label x:Name="Body" Content="{0}" HorizontalContentAlignment="Center" Margin="20,69,20,0" Height="40" VerticalAlignment="Top"/>' -f $Messsage
+	
+	$Controls = $Label
+	$Controls += $Button
+	$t = [string]::Format($raw, $Title, $PopupPicture, $Controls)
+	[xml]$XAML = $t -replace 'mc:Ignorable="d"', '' -replace "x:N", 'N' -replace '^<Win.*', '<Window' #-replace wird benötigt, wenn XAML aus Visual Studio kopiert wird.
+	
+	[void][System.Reflection.Assembly]::LoadWithPartialName('presentationframework')
+	$Form = [Windows.Markup.XamlReader]::Load((New-Object System.Xml.XmlNodeReader $XAML))
+	switch ($Buttons)
+	{
+		'OK' {
+			$Form.FindName("ButtonOK").Add_Click({
+					$Form.Dialogresult = $false
+					return
+				})
+		}
+		'YesNo' {
+			$Form.FindName("ButtonYes").Add_Click({
+					$Form.Dialogresult = $true
+					return
+				})
+			$Form.FindName("ButtonNo").Add_Click({
+					$Form.Dialogresult = $false
+					return
+				})
+		}
+	}
+	$Form.ShowDialog()
 }
 function Write-Log()
 {
@@ -134,23 +194,6 @@ function Block-AppExecution()
 		[string[]]$Name,
 		[string]$DebuggerPath = $env:TEMP
 	)
-	
-	# Verifies if the user is administrator
-	try
-	{
-		If (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator"))
-		{
-			Throw ([string]::Format($stringTable.ErrorMissingAdmin, $env:USERNAME))
-		}
-		
-	}
-	catch
-	{
-		# Catch all other exceptions thrown by one of those commands
-		Write-Error $_
-		return
-	}
-	
 	foreach ($File in $Name)
 	{
 		# Checks if a complete path has been specified
@@ -172,22 +215,6 @@ function Unblock-AppExecution()
 		[Parameter(Mandatory = $True, ValueFromPipeline = $true)]
 		[string[]]$Name
 	)
-	
-	# Verifies if the user is administrator
-	try
-	{
-		If (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator"))
-		{
-			Throw ([string]::Format($stringTable.ErrorMissingAdmin, $env:USERNAME))
-		}
-		
-	}
-	catch
-	{
-		# Catch all other exceptions thrown by one of those commands
-		Write-Error $_
-		return
-	}
 	foreach ($File in $Name)
 	{
 		# Checks if a complete path has been specified
@@ -207,7 +234,6 @@ function Unblock-AppExecution()
 	}
 }
 #endregion
-
 
 
 #region Variable definition
@@ -234,114 +260,155 @@ class CustomException: System.Exception
 $is64Bit = [environment]::Is64BitOperatingSystem
 $is64BitProcess = [Environment]::Is64BitProcess
 
-$EventLogName = 'Application'
-$EventLogSource = 'Install-Software'
-
 # text messages
 $LocalizedData = @{
-	"de-DE"    = @{
-		MainActivity				 = "Installation"
+	"de-DE"	       = @{
 		MessageTitle				 = "Programm Installation"
-		QuestionCloseApplication	 = "{0} wird noch ausgeführt. Programm schliessen und die Installation fortsetzen?"
+		QuestionCloseApplication	 = "{0} wird noch ausgeführt. Programm schliessen &#10;und die Installation fortsetzen?"
 		InfoCloseApplication		 = "{0} wird geschlossen und die Installation fortgesetzt"
-		InfoCancelInstallation	     = "Die Installation von {0} wird abgebrochen und zu einem späteren Zeitpunkt erneut ausgeführt."
+		InfoCancelInstallation	     = "Die Installation von {0} wird abgebrochen &#10;und zu einem späteren Zeitpunkt erneut ausgeführt."
 		InfoInstallFinished		     = "Die Installation von {0} ist beendet."
 		QuestionReboot			     = "{0} Computer jetzt neustarten?"
 		InfoReboot				     = "Computer wird jetzt neugestartet!"
 		CancelReboot				 = "Bitte Computer später neustarten."
 		RebootMsg				     = "Installation benötigt einen Neustart."
 		BlockedApplication		     = "Das ausführen von {0} ist vorübergehend gesperrt"
+		yes						     = "Ja"
+		no						     = "Nein"
+		ok						     = "OK"
+		ProcessBar				     = @{
+			Start		     = "Installation wird gestartet"
+			PreTask		     = "Aufgabe vor der Deinstallation wird ausgeführt"
+			PreUninstall	 = "Deinstallation wird vorbereitet"
+			Uninstall	     = "{0} wird deinstalliert"
+			Task			 = "Aufgabe vor der Installation wird ausgeführt."
+			PreInstall	     = "Installation wird vorbereitet"
+			Install		     = "{0} wird installiert"
+			PostTask		 = "Aufgabe nach der Installation wird ausgeführt."
+			CleanUp		     = "Daten werden bereinigt"
+			End			     = 'Installation beendet'
+		}
 	}
-	"en-EN"    = @{
-		MainActivity				 = "Installation"
+	"en-EN"	       = @{
 		MessageTitle				 = "software installation"
-		QuestionCloseApplication	 = "{0} is still running. Close the program and continue the installation?"
+		QuestionCloseApplication	 = "{0} is still running. Close the program &#10;and continue the installation?"
 		InfoCloseApplication		 = "{0} is closed and the installation is continued"
-		InfoCancelInstallation	     = "The installation of {0} will be aborted and run again at a later time."
+		InfoCancelInstallation	     = "The installation of {0} will be aborted &#10;and run again at a later time."
 		InfoInstallFinished		     = "The installation of {0} is finished."
 		QuestionReboot			     = "{0} Restart computer now?"
 		InfoReboot				     = "Computer will be restarted now!"
 		CancelReboot				 = "Please restart computer later."
 		RebootMsg				     = "Installation requires a reboot."
 		BlockedApplication		     = "Running {0} is temporarily blocked"
+		yes						     = "Yes"
+		no						     = "No"
+		ok						     = "OK"
+		ProcessBar				     = @{
+			Start		     = "Installation wird gestartet"
+			PreTask		     = "Aufgabe vor der Deinstallation wird ausgeführt"
+			PreUninstall	 = "Deinstallation wird vorbereitet"
+			Uninstall	     = "{0} wird deinstalliert"
+			Task			 = "Aufgabe vor der Installation wird ausgeführt."
+			PreInstall	     = "Installation wird vorbereitet"
+			Install		     = "{0} wird installiert"
+			PostTask		 = "Aufgabe nach der Installation wird ausgeführt."
+			CleanUp		     = "Daten werden bereinigt"
+			End			     = 'Installation beendet'
+		}
 	}
 }
 
 $DefaultLocalizedData = 'de-DE'
-if ($LocalizedData.((Get-WinSystemLocale).name.tostring()) -ne $null)
+$SystemLocale = (Get-WinSystemLocale).name.tostring()
+if ($SystemLocale -ne $null -and $SystemLocale -in $LocalizedData.Keys)
 {
-	$stringTable = $LocalizedData.((Get-WinSystemLocale).name.tostring())
+	$stringTable = $LocalizedData.$SystemLocale
 }
 else
 {
 	$stringTable = $LocalizedData.$DefaultLocalizedData
 }
-$ReceivedExitCodes = @()
-$ExitCodes = @{
-	Sucessfull	      = 0
-	RebootRequired    = 1
-	Failed		      = 2
-}
-
 # Processbar messages
-$ProcessBar = @{
-	Start		     = "Installation wird gestartet"
-	PreTask		     = "Aufgabe vor der Deinstallation wird ausgeführt"
-	PreUninstall	 = "Deinstallation wird vorbereitet"
-	Uninstall	     = "{0} wird deinstalliert"
-	Task			 = "Aufgabe vor der Installation wird ausgeführt."
-	PreInstall	     = "Installation wird vorbereitet"
-	Install		     = "{0} wird installiert"
-	PostTask		 = "Aufgabe nach der Installation wird ausgeführt."
-	CleanUp		     = "Daten werden bereinigt"
-	End			     = 'Installation beendet'
-}
+$ProcessBar = $stringTable.ProcessBar
 
 # log messages
 $LogTable = @{
-	Start				   = 'installation of {0} is started'
-	StartInstall		   = 'install...'
-	CancelInstall		   = 'installation of {0} was canceled by user'
-	VariableNotSet		   = 'variable  {0} not set'
-	StopProcess		       = 'terminating process: {0}'
-	ProcessRunning		   = "the process {0} could not be terminated"
-	RunTask			       = "Script {0} is executed with parameters: "
-	TaskComplete		   = "Script finished with status {0}."
-	TaskError			   = "Script {0} finished with error: {1}"
-	StartUninstall		   = "uninstalling..."
-	Uninstall			   = "uninstalling {0}"
-	UninstallNotFound	   = "uninstall command for {0} not found"
-	UninstallError		   = "uninstall command for {0} finished with error: {1}"
-	RunExeFile			   = "running installer {0} with parameters:: {1}"
-	RunExeFileComplete	   = 'installer {0} finished with status {1}'
-	ExeFileError		   = "installing {0} finished with error: {1}"
-	UninstallMSI		   = "MSI uninstalling for {0} with parameters: {1}"
-	UninstallMSIError	   = "MSI uninstalling for {0} finished with error: {1}"
-	BlockApplication	   = "block start of {0}"
-	UnblockApplication	   = "unblock start of {0}"
-	CleanUp			       = "clean up files"
-	PathNotFound		   = "file {0} not found"
-	Exit				   = "installation {0} aborted"
-	Finish				   = "installation finished"
-	Reboot				   = "restarting computer"
-	CancelReboot		   = "restart aborted by user"
-	UnexpectedError	       = "unknown error:"
-	is64BitOS			   = "OS 64bit: {0}"
-	is64BitProcess		   = "Powershell 64bit: {0}"
-	RebootExitcodes	       = "ExitCodes require restart: {0}"
+	Start				    = 'installation of {0} is started'
+	StartInstall		    = 'install...'
+	CancelInstall		    = 'installation of {0} was canceled by user'
+	VariableNotSet		    = 'variable  {0} not set'
+	StopProcess			    = 'terminating process: {0}'
+	ProcessRunning		    = "the process {0} could not be terminated"
+	RunTask				    = "Script {0} is executed with parameters: "
+	TaskComplete		    = "Script finished with status {0}."
+	TaskError			    = "Script {0} finished with error: {1}"
+	StartUninstall		    = "uninstalling..."
+	Uninstall			    = "uninstalling {0}"
+	UninstallNotFound	    = "uninstall command for {0} not found"
+	UninstallError		    = "uninstall command for {0} finished with error: {1}"
+	RunExeFile			    = "running {0} with parameters:: {1}"
+	RunExeFileComplete	    = '{0} finished with status {1}'
+	RunExeFileTimeout	    = '{0} has run into a timeout of {1}. process is terminated'
+	ExeFileError		    = "installing {0} finished with error: {1}"
+	UninstallMSI		    = "MSI uninstalling for {0} with parameters: {1}"
+	UninstallMSIError	    = "MSI uninstalling for {0} finished with error: {1}"
+	BlockApplication	    = "block start of {0}"
+	UnblockApplication	    = "unblock start of {0}"
+	CleanUp				    = "clean up files"
+	PathNotFound		    = "file {0} not found"
+	Exit				    = "installation {0} aborted"
+	Finish				    = "installation finished"
+	Reboot				    = "restarting computer"
+	CancelReboot		    = "restart aborted by user"
+	UnexpectedError		    = "unknown error:"
+	is64BitOS			    = "OS 64bit: {0}"
+	is64BitProcess		    = "Powershell 64bit: {0}"
+	RebootExitcodes		    = "ExitCodes require restart: {0}"
+	WorkingDirectory	    = 'Working Directory: {0}'
+	ExitCode			    = 'Completed with exitcode {0}'
 }
+
+$ReceivedExitCodes = @()
+$ExitCodes = @{
+	Sucessfull		   = 0
+	RebootRequired	   = 1
+	Failed			   = 2
+	AdminRequired	   = -1
+}
+
+$Silent = if ($UI -eq 'none') { $true }
+else { $false }
 #endregion
 
-if (![string]::IsNullOrEmpty($BlockedExe))
+if ($Commandline -match '[\/-][\?]')
+{
+	$Message = @'
+Parameters:
+-Configfile - Json configuration file
+-BlockedExe - show BlockExe popup
+-UI - define ui style none|basic|full
+-ForceReboot - if ui set to none, force required reboot
+
+Exitcodes:
+0  Sucessfull
+1  RebootRequired
+2  Failed
+-1 AdminRequired
+'@
+	[System.Windows.Forms.MessageBox]::Show($Message, 'Help', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Question)
+	exit 0
+}
+elseif (![string]::IsNullOrEmpty($BlockedExe))
 {
 	$MessageTitle = [String]::Format($stringTable.MessageTitle)
 	$Answer = Read-Answer -Messsage ([String]::Format($stringTable.BlockedApplication, $BlockedExe)) -Title $MessageTitle -Buttons OK
+	exit 0
 }
 
 # set working directory
 if ([string]::IsNullOrEmpty([System.IO.Path]::GetDirectoryName($ConfigFile)) -eq $true)
 {
-	$WorkingDirectory = $PSScriptRoot
+	$WorkingDirectory = [System.IO.Path]::GetDirectoryName($InvocationExe)
 }
 else
 {
@@ -351,10 +418,29 @@ Set-Location $WorkingDirectory
 
 # Import configuration
 $Config = (Get-Content $ConfigFile).Replace('$$pwd$$', [regex]::Escape($WorkingDirectory)) | ConvertFrom-Json
-$ProcessTimeOut = if ($Config.ProcessTimeOut) { $Config.ProcessTimeOut }else { 300 }
+
+$ProcessTimeOut = if ($Config.ProcessTimeOut) { $Config.ProcessTimeOut }
+else { 300 }
+
+$PopupPicture = if ($Config.Picture) { $Config.Picture }
+else { '' }
+
+$EventLogName = if ($Config.EventLogName) { $Config.EventLogName }
+else { 'Application' }
+
+$EventLogSource = if ($Config.EventLogSource) { $Config.EventLogSource }
+else { [System.IO.Path]::GetFileNameWithoutExtension($InvocationExe) }
+
+$EventID = if ($Config.EventID) { $Config.EventID }
+else { '1337' }
+
 
 try
 {
+	If (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator"))
+	{
+		Throw ([string]::Format($stringTable.ErrorMissingAdmin, $env:USERNAME))
+	}
 	
 	# create logfile	
 	if ($Config.LogFile)
@@ -369,7 +455,7 @@ try
 	{
 		New-EventLog -LogName $EventLogName -Source $EventLogSource
 	}
-	
+	Write-Log -Message ([String]::Format($LogTable.WorkingDirectory, $WorkingDirectory))
 	Write-Log -Message ([String]::Format($LogTable.is64BitOS, $is64Bit.tostring()))
 	Write-Log -Message ([String]::Format($LogTable.is64BitProcess, $is64BitProcess.tostring()))
 	
@@ -417,7 +503,7 @@ try
 		# ask user if process can be closed 
 		$MessageTitle = [String]::Format($stringTable.MessageTitle)
 		$Answer = Read-Answer -Messsage ([String]::Format($stringTable.QuestionCloseApplication, $Config.ProgramName)) -Title $MessageTitle -Buttons YesNo
-		If ($Answer -like "yes")
+		If ($Answer -eq $true)
 		{
 			# if answer is yes, stop process
 			$Answer = Read-Answer -Messsage ([String]::Format($stringTable.InfoCloseApplication, $Config.ProgramName)) -Title $MessageTitle -Buttons OK
@@ -726,7 +812,7 @@ finally
 			{
 				$Answer = Read-Answer -Messsage ([String]::Format($stringTable.QuestionReboot, $stringTable.RebootMsg)) -Title $MessageTitle -Buttons YesNo
 			}
-			If ($Answer -like "yes")
+			If ($Answer -eq $true)
 			{
 				#$Answer = Read-Answer -Messsage ([String]::Format($stringTable.InfoReboot)) -Title $MessageTitle -Buttons OK
 				
@@ -749,7 +835,11 @@ finally
 			Start-Job -ScriptBlock { shutdown.exe /r /t 60 } | Receive-Job -Wait
 		}
 	}
-	
+	If (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator"))
+	{
+		$ExitCode = $ExitCodes.AdminRequired
+	}
+	Write-Log -Message ([String]::Format($LogTable.ExitCode, $ExitCode))
 	Stop-Transcript
 	$EventMessage = Get-Content -Path $log.Path -Raw
 	switch ($ExitCode)
@@ -759,6 +849,8 @@ finally
 		$ExitCodes.Failed { $EntryType = 'Error' }
 		
 	}
-	Write-EventLog -LogName $EventLogName -Source $EventLogSource -EventId 1337 -Message $EventMessage -EntryType $EntryType
+	Write-EventLog -LogName $EventLogName -Source $EventLogSource -EventId $EventID -Message $EventMessage -EntryType $EntryType
 	#endregion
+	
+	exit $ExitCode
 }

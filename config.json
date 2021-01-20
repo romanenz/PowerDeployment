@@ -34,4 +34,5 @@
 "ErrorTask":[],
 "RebootRequiredExitCodes":["1610","3010"],
 "ProcessTimeOut":"300"
+"Picture":""
 }
