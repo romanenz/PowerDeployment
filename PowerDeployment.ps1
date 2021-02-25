@@ -22,6 +22,7 @@ param (
 	[switch]$ForceReboot = $false
 	
 )
+$ExitCode = 5
 # Load assembly
 Add-Type -AssemblyName "System.Windows.Forms"
 
@@ -31,11 +32,23 @@ function _Get-Process()
 {
 	param (
 		[Parameter(Mandatory = $True)]
-		[String]$Name
+		[String]$Name,
+		[switch]$Check = $false
 	)
 	$Name = [regex]::Escape($Name)
-	$process = Get-Process | Select-Object id, Description, Product, name | Where-Object {
+	$process = Get-Process | Where-Object {
 		$_.Product -match $Name -or $_.Description -match $Name
+	}
+	if ($Check -eq $true)
+	{
+		$Counter = 0
+		While ($process -ne $null -and $Counter -lt 4) {
+			$process = Get-Process | Where-Object {
+				$_.Product -match $Name -or $_.Description -match $Name
+			}
+			$Counter++
+		}
+		
 	}
 	return $process
 }
@@ -56,7 +69,18 @@ function Execute_ExeFile()
 	{
 		$Proc = Start-Process $file -ArgumentList $arguments -PassThru
 	}
+	Write-Log -Message ([String]::Format($LogTable.RunExeFile, $file, $arguments))
 	Wait-Process -InputObject $Proc -Timeout $ProcessTimeOut -ErrorAction SilentlyContinue
+	if ($file -match 'msiexec' -and $Proc.ExitCode -eq '1639' -and $arguments -match '^\/x{')
+	{
+		$arg = $arguments.Split(' ')[0] + ' /norestart /qn'
+		
+		Write-Log -Message ([String]::Format($LogTable.RetryRunExeFile, $file, $Proc.ExitCode, $arg))
+		Write-Log -Message ([String]::Format($LogTable.RunExeFile, $file, $arg))
+		$Proc = Start-Process $file -ArgumentList $arg -PassThru
+		Wait-Process -InputObject $Proc -Timeout $ProcessTimeOut -ErrorAction SilentlyContinue
+	}
+	
 	if ($Proc.HasExited -eq $false)
 	{
 		Write-Log -Message ([String]::Format($LogTable.RunExeFileTimeout, $file, $ProcessTimeOut))
@@ -98,7 +122,9 @@ function Run-Task()
 	# Write log
 	Write-Log -Message ([String]::Format($LogTable.RunTask, $ScriptPath, $Parameters))
 	# start  script as job
-	$job = Start-Job -FilePath $ScriptPath -ArgumentList $Param -InitializationScript ([ScriptBlock]::Create("Set-Location $pwd;Set-Variable -Name ErrorActionPreference -Value SilentlyContinue")) -ErrorAction Stop
+	$scriptblock = $executioncontext.invokecommand.NewScriptBlock((Get-Content $ScriptPath))
+	
+	$job = Start-Job -ScriptBlock $scriptblock -ArgumentList $Param -InitializationScript ([ScriptBlock]::Create("Set-Location $pwd;Set-Variable -Name ErrorActionPreference -Value SilentlyContinue")) -ErrorAction Stop
 	Receive-Job $job -Wait -AutoRemoveJob
 	
 	# Write log
@@ -147,7 +173,10 @@ function Read-Answer
 '@ -f $stringTable.yes, $stringTable.no
 		}
 	}
-	
+	for ($i = 1; $i -lt (($Messsage.Length / 60)); $i++)
+	{
+		$Messsage = $Messsage.Insert($Messsage.Substring(0, (60 * $i)).LastIndexOf(' ') + 1, '&#10;')
+	}
 	$Label = '<Label x:Name="Body" Content="{0}" HorizontalContentAlignment="Center" Margin="20,69,20,0" Height="40" VerticalAlignment="Top"/>' -f $Messsage
 	
 	$Controls = $Label
@@ -264,9 +293,9 @@ $is64BitProcess = [Environment]::Is64BitProcess
 $LocalizedData = @{
 	"de-DE"	       = @{
 		MessageTitle				 = "Programm Installation"
-		QuestionCloseApplication	 = "{0} wird noch ausgeführt. Programm schliessen &#10;und die Installation fortsetzen?"
+		QuestionCloseApplication	 = "{0} wird noch ausgeführt. Programm schliessen und die Installation fortsetzen?"
 		InfoCloseApplication		 = "{0} wird geschlossen und die Installation fortgesetzt"
-		InfoCancelInstallation	     = "Die Installation von {0} wird abgebrochen &#10;und zu einem späteren Zeitpunkt erneut ausgeführt."
+		InfoCancelInstallation	     = "Die Installation von {0} wird abgebrochen und zu einem späteren Zeitpunkt erneut ausgeführt."
 		InfoInstallFinished		     = "Die Installation von {0} ist beendet."
 		QuestionReboot			     = "{0} Computer jetzt neustarten?"
 		InfoReboot				     = "Computer wird jetzt neugestartet!"
@@ -291,9 +320,9 @@ $LocalizedData = @{
 	}
 	"en-EN"	       = @{
 		MessageTitle				 = "software installation"
-		QuestionCloseApplication	 = "{0} is still running. Close the program &#10;and continue the installation?"
+		QuestionCloseApplication	 = "{0} is still running. Close the program and continue the installation?"
 		InfoCloseApplication		 = "{0} is closed and the installation is continued"
-		InfoCancelInstallation	     = "The installation of {0} will be aborted &#10;and run again at a later time."
+		InfoCancelInstallation	     = "The installation of {0} will be aborted and run again at a later time."
 		InfoInstallFinished		     = "The installation of {0} is finished."
 		QuestionReboot			     = "{0} Restart computer now?"
 		InfoReboot				     = "Computer will be restarted now!"
@@ -338,6 +367,7 @@ $LogTable = @{
 	CancelInstall		    = 'installation of {0} was canceled by user'
 	VariableNotSet		    = 'variable  {0} not set'
 	StopProcess			    = 'terminating process: {0}'
+	StoppingService			= 'stopping service: {0}'
 	ProcessRunning		    = "the process {0} could not be terminated"
 	RunTask				    = "Script {0} is executed with parameters: "
 	TaskComplete		    = "Script finished with status {0}."
@@ -346,7 +376,8 @@ $LogTable = @{
 	Uninstall			    = "uninstalling {0}"
 	UninstallNotFound	    = "uninstall command for {0} not found"
 	UninstallError		    = "uninstall command for {0} finished with error: {1}"
-	RunExeFile			    = "running {0} with parameters:: {1}"
+	RunExeFile			    = "running {0} with parameters: {1}"
+	RetryRunExeFile		    = "{0} endet with error {1} retry with parameters:: {2}"
 	RunExeFileComplete	    = '{0} finished with status {1}'
 	RunExeFileTimeout	    = '{0} has run into a timeout of {1}. process is terminated'
 	ExeFileError		    = "installing {0} finished with error: {1}"
@@ -396,13 +427,15 @@ Exitcodes:
 -1 AdminRequired
 '@
 	[System.Windows.Forms.MessageBox]::Show($Message, 'Help', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Question)
-	exit 0
+	$ExitCode = 3
+	exit
 }
 elseif (![string]::IsNullOrEmpty($BlockedExe))
 {
 	$MessageTitle = [String]::Format($stringTable.MessageTitle)
 	$Answer = Read-Answer -Messsage ([String]::Format($stringTable.BlockedApplication, $BlockedExe)) -Title $MessageTitle -Buttons OK
-	exit 0
+	$ExitCode = 4
+	exit
 }
 
 # set working directory
@@ -417,7 +450,7 @@ else
 Set-Location $WorkingDirectory
 
 # Import configuration
-$Config = (Get-Content $ConfigFile).Replace('$$pwd$$', [regex]::Escape($WorkingDirectory)) | ConvertFrom-Json
+$Config = (Get-Content $ConfigFile).Replace('$$pwd$$', ($WorkingDirectory -replace '\\', '\\')) | ConvertFrom-Json
 
 $ProcessTimeOut = if ($Config.ProcessTimeOut) { $Config.ProcessTimeOut }
 else { 300 }
@@ -455,6 +488,7 @@ try
 	{
 		New-EventLog -LogName $EventLogName -Source $EventLogSource
 	}
+	Write-Log -Message ([String]::Format($LogTable.Start, $Config.ProgramName))
 	Write-Log -Message ([String]::Format($LogTable.WorkingDirectory, $WorkingDirectory))
 	Write-Log -Message ([String]::Format($LogTable.is64BitOS, $is64Bit.tostring()))
 	Write-Log -Message ([String]::Format($LogTable.is64BitProcess, $is64BitProcess.tostring()))
@@ -522,10 +556,8 @@ try
 			# Write log
 			Throw [CustomException]::new('CancelInstall', ([String]::Format($LogTable.CancelInstall, $process.name)))
 		}
-		# Wait to close process
-		Start-Sleep -Seconds 10
 		# Check whether the process is running. If not, start installation
-		$process = _Get-Process -Name $Config.ProgramName
+		$process = _Get-Process -Name $Config.ProgramName -Check
 	}
 	elseif ($Silent -eq $true)
 	{
@@ -534,10 +566,8 @@ try
 		# Write log
 		Write-Log -Message ([String]::Format($LogTable.StopProcess, $process.name))
 		
-		# Wait to close process
-		Start-Sleep -Seconds 10
 		# Check whether the process is running. If not, start installation
-		$process = _Get-Process -Name $Config.ProgramName
+		$process = _Get-Process -Name $Config.ProgramName -Check
 	}
 	if ($Config.BlockExe)
 	{
@@ -552,7 +582,19 @@ try
 	
 	if ($process)
 	{
-		Throw [CustomException]::new('ProcessRunning', ([String]::Format($LogTable.ProcessRunning, $process.name)))
+		$Service = Get-CimInstance -class win32_service | Where-Object  {
+			$_.Name -match $Config.ProgramName -or $_.Description -match $Config.ProgramName -or $_.DisplayName -match $Config.ProgramName
+		}
+		if ($Service -ne $null) {
+			Write-Log -Message ([String]::Format($LogTable.StoppingService, $Service.name))
+			$Service.Name | Stop-Service -Force			
+		}
+		# Check whether the process is running. If not, start installation
+		$process = _Get-Process -Name $Config.ProgramName -Check
+		if ($process)
+		{
+			Throw [CustomException]::new('ProcessRunning', ([String]::Format($LogTable.ProcessRunning, $process.name)))
+		}
 	}
 	Process_Bar -status $ProcessBar.PreTask -percent 5
 	
@@ -607,7 +649,7 @@ try
 						
 						Write-Log -Message ([String]::Format($LogTable.UninstallMSI, $UninstallCode, $Program.Parameter))
 						
-						[string]$arguments = '/x{0} /norestart /quiet {1}' -f $UninstallCode, $Program.Parameter
+						[string]$arguments = '/x{0} /norestart /qn {1}' -f $UninstallCode, $Program.Parameter
 						Execute_ExeFile -file 'msiexec.exe' -arguments $arguments -ExitCodes @(0, 1641, 3010)
 						
 					}
@@ -653,7 +695,7 @@ try
 		[Int]$Status = 30
 		# Write log
 		Write-Log -Message ([String]::Format($LogTable.StartInstall))
-		$Installer = $Config.Install | ? { $_ -notmatch '32Bit|64Bit' }
+		$Installer = $Config.Install
 		if ($Installer.Count -eq $null -or $Installer.Count -ge 1)
 		{
 			foreach ($Program in $Installer)
@@ -794,7 +836,7 @@ finally
 	}
 	if (-not $aborded)
 	{
-		$RebootExitcodes = (Compare-Object -ReferenceObject $ReceivedExitCodes -DifferenceObject $Config.RebootRequiredExitCodes -ExcludeDifferent -IncludeEqual).InputObject
+		$RebootExitcodes = (Compare-Object -ReferenceObject $ReceivedExitCodes -DifferenceObject @($Config.RebootRequiredExitCodes | Select-Object) -ExcludeDifferent -IncludeEqual ).InputObject
 		if ($RebootExitcodes)
 		{
 			Write-Log -Message ([String]::Format($LogTable.RebootExitcodes, $RebootExitcodes))
