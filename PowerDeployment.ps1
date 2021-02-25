@@ -122,7 +122,8 @@ function Run-Task()
 	# Write log
 	Write-Log -Message ([String]::Format($LogTable.RunTask, $ScriptPath, $Parameters))
 	# start  script as job
-	$scriptblock = $executioncontext.invokecommand.NewScriptBlock((Get-Content $ScriptPath))
+	$ScriptContent = Get-Content $ScriptPath -Raw
+	$ScriptBlock = [System.Management.Automation.ScriptBlock]::Create($ScriptContent)
 	
 	$job = Start-Job -ScriptBlock $scriptblock -ArgumentList $Param -InitializationScript ([ScriptBlock]::Create("Set-Location $pwd;Set-Variable -Name ErrorActionPreference -Value SilentlyContinue")) -ErrorAction Stop
 	Receive-Job $job -Wait -AutoRemoveJob
@@ -396,6 +397,7 @@ $LogTable = @{
 	is64BitProcess		    = "Powershell 64bit: {0}"
 	RebootExitcodes		    = "ExitCodes require restart: {0}"
 	WorkingDirectory	    = 'Working Directory: {0}'
+	Executionpolicy			= 'Executionpolicy: {0}'
 	ExitCode			    = 'Completed with exitcode {0}'
 }
 
@@ -492,6 +494,7 @@ try
 	Write-Log -Message ([String]::Format($LogTable.WorkingDirectory, $WorkingDirectory))
 	Write-Log -Message ([String]::Format($LogTable.is64BitOS, $is64Bit.tostring()))
 	Write-Log -Message ([String]::Format($LogTable.is64BitProcess, $is64BitProcess.tostring()))
+	Write-Log -Message ([String]::Format($LogTable.Executionpolicy, (Get-ExecutionPolicy)))
 	
 	
 	#region Variable validation
