@@ -129,7 +129,8 @@ function Read-Answer
 		[string]$Messsage,
 		[ValidateSet('OK', 'YesNo')]
 		$Buttons,
-		[string]$Title = [System.IO.Path]::GetFileNameWithoutExtension($InvocationExe)
+		[string]$Title = [System.IO.Path]::GetFileNameWithoutExtension($InvocationExe),
+		[int]$Timeout = $null
 	)
 	$raw = @"
 <Window x:Name="PowerDeploy" x:Class="WpfApp1.MainWindow"
@@ -190,6 +191,27 @@ function Read-Answer
 					return
 				})
 		}
+	}
+	
+	if ($null -ne $Timeout) {
+		Function Timer_Tick()
+		{
+			--$Script:CountDown
+			if ($Script:CountDown -lt 0)
+			{
+				$Timer.Stop(); 
+				$Form.Close();
+				$Timer.Dispose();
+				$Script:CountDown=5
+			}
+		}
+	
+		$Timer = New-Object System.Windows.Forms.Timer
+		$Timer.Interval = 1000		
+		$Script:CountDown = $Timeout
+	
+		$Timer.Add_Tick({ Timer_Tick})
+		$Timer.Start()
 	}
 	$Form.ShowDialog()
 }
@@ -523,11 +545,19 @@ try
 	
 	# If the process is running, ask user if this can be closed
 	if ($process -and $Silent -eq $false)
-	{
+	{		
 		Write-Log -Message ([String]::Format($LogTable.StopProcess, $process.name))
-		# ask user if process can be closed 
-		$MessageTitle = [String]::Format($stringTable.MessageTitle)
-		$Answer = Read-Answer -Messsage ([String]::Format($stringTable.QuestionCloseApplication, $Config.ProgramName)) -Title $MessageTitle -Buttons YesNo
+		# check if cancel count is set and get canceld events
+		if (![string]::IsNullOrEmpty($Config.CancelCountLimit)) {
+			$CanceledEvents = Get-EventLog -LogName $EventLogName -InstanceId $EventID -After (Get-Date).AddDays(-3) | Where-Object { $_.Message -match $Config.ProgramName -and $_.Message -match "exitcode $($ExitCodes.Canceled)"}
+		}
+		if ([string]::IsNullOrEmpty($Config.CancelCountLimit) -or ($Config.CancelCountLimit -gt $CanceledEvents.count)) {
+			# ask user if process can be closed 
+			$MessageTitle = [String]::Format($stringTable.MessageTitle)
+			$Answer = Read-Answer -Messsage ([String]::Format($stringTable.QuestionCloseApplication, $Config.ProgramName)) -Title $MessageTitle -Buttons YesNo			
+		}else {
+			$Answer = $true
+		}
 		If ($Answer -eq $true)
 		{
 			# if answer is yes, stop process
@@ -777,20 +807,16 @@ catch [System.Management.Automation.SessionStateException] {
 catch [CustomException] {
 	$aborded = $true
 	$Message = $_.Exception
-	if ($_.Exception -like "CancelInstall")
-	{
-		$canceled = $true
-		$Message = 'canceled by user'
-	}
-	if ($_.Exception -like "ProcessRunning")
-	{
-	}
-	if ($_.Exception -like "TaskError")
-	{
-	}
-	if ($_.Exception -like "ExeError")
-	{
-	}
+    switch -regex ($_.Exception)
+{
+    'CancelInstall' {
+        $canceled = $true
+		$Message = 'canceled by user'}
+    'ProcessRunning' {}
+    'TaskError' {}
+    'ExeError' {}
+    Default {}
+}
 	Write-Log -Message $Message
 }
 catch [System.Management.Automation.ParameterBindingException]{
