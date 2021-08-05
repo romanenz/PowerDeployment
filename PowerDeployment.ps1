@@ -1,18 +1,3 @@
-﻿<#	
-    .NOTES
-    ===========================================================================
-	 Modified on:   23.12.2020
-    Created by:    roman.enz
-    Organization:  esolva ag
-     Version:       0.4
-    ===========================================================================
-    .DESCRIPTION
-
-    .LINK
-        GIT
-    .LINK
-        XWiki 
-#>
 param (
 	[Alias('config', 'c')]
 	[String]$ConfigFile = 'config.json',
@@ -22,7 +7,7 @@ param (
 	[switch]$ForceReboot = $false
 	
 )
-$ExitCode = 5
+$ExitCode = -2
 # Load assembly
 Add-Type -AssemblyName "System.Windows.Forms"
 
@@ -406,6 +391,7 @@ $ExitCodes = @{
 	Sucessfull		   = 0
 	RebootRequired	   = 1
 	Failed			   = 2
+	Canceled		   = 3
 	AdminRequired	   = -1
 }
 
@@ -426,6 +412,8 @@ Exitcodes:
 0  Sucessfull
 1  RebootRequired
 2  Failed
+3  Canceled by User
+101 Blocked Exe
 -1 AdminRequired
 '@
 	[System.Windows.Forms.MessageBox]::Show($Message, 'Help', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Question)
@@ -436,7 +424,7 @@ elseif (![string]::IsNullOrEmpty($BlockedExe))
 {
 	$MessageTitle = [String]::Format($stringTable.MessageTitle)
 	$Answer = Read-Answer -Messsage ([String]::Format($stringTable.BlockedApplication, $BlockedExe)) -Title $MessageTitle -Buttons OK
-	$ExitCode = 4
+	$ExitCode = 101
 	exit
 }
 
@@ -574,6 +562,31 @@ try
 	}
 	if ($Config.BlockExe)
 	{
+		# check if exe is running and close
+		$BlockExeProcesses = Get-Process | Where-Object { [System.IO.Path]::GetFileName($_.Path) -in $Config.BlockExe}
+		if ($null -ne $BlockExeProcesses) {
+			$Answer = Read-Answer -Messsage ([String]::Format($stringTable.QuestionCloseApplication, ($BlockExeProcesses.Product -join ', '))) -Title ([String]::Format($stringTable.MessageTitle)) -Buttons YesNo
+			If ($Answer -eq $true)
+		{
+			# if answer is yes, stop process
+			$Answer = Read-Answer -Messsage ([String]::Format($stringTable.InfoCloseApplication, ($BlockExeProcesses.Product -join ', '))) -Title ([String]::Format($stringTable.MessageTitle)) -Buttons OK
+			$BlockExeProcesses | Stop-Process -Force
+			
+			# Write log
+			Write-Log -Message ([String]::Format($LogTable.StopProcess, ($BlockExeProcesses.Name -join '|')))
+			# set variable for userinformation about finishing installation
+			$InfoInstallFinished = $true
+		}
+		else
+		{
+			# inform user, installation will start later again
+			$Answer = Read-Answer -Messsage ([String]::Format($stringTable.InfoCancelInstallation, $Config.ProgramName)) -Title ([String]::Format($stringTable.MessageTitle)) -Buttons OK
+			
+			# Write log
+			Throw [CustomException]::new('CancelInstall', ([String]::Format($LogTable.CancelInstall, $process.name)))
+		}
+		}
+
 		# block exe execution for eache exe
 		foreach ($ExeFile in $Config.BlockExe)
 		{
@@ -581,6 +594,7 @@ try
 			Write-Log -Message ([String]::Format($LogTable.BlockApplication, $ExeFile))
 			Block-AppExecution -Name $ExeFile
 		}
+		
 	}
 	
 	if ($process)
@@ -765,6 +779,8 @@ catch [CustomException] {
 	$Message = $_.Exception
 	if ($_.Exception -like "CancelInstall")
 	{
+		$canceled = $true
+		$Message = 'canceled by user'
 	}
 	if ($_.Exception -like "ProcessRunning")
 	{
@@ -796,7 +812,7 @@ finally
 	$ExitCode = $ExitCodes.Sucessfull
 	#region finnaly
 	Process_Bar -status $ProcessBar.CleanUp -percent 95
-	if ($aborded)
+	if ($aborded -and -not $canceled)
 	{
 		$ExitCode = $ExitCodes.Failed
 		Write-Log -Message ([String]::Format($LogTable.Exit, $Config.ProgramName))
@@ -808,6 +824,10 @@ finally
 				Run-Task -ScriptPath $Script.File -Parameters $Script.Parameter
 			}
 		}
+	}elseif ($canceled) {
+		$ExitCode = $ExitCodes.Canceled
+		Write-Log -Message ([String]::Format($LogTable.Exit, $Config.ProgramName))
+		Write-Log -Message $Error
 	}
 	if ($Config.BlockExe)
 	{
@@ -891,6 +911,7 @@ finally
 	{
 		$ExitCodes.Sucessfull { $EntryType = 'Information' }
 		$ExitCodes.RebootRequired { $EntryType = 'Information' }
+		$ExitCodes.Canceled { $EntryType = 'Warning' }
 		$ExitCodes.Failed { $EntryType = 'Error' }
 		
 	}
