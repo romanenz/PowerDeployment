@@ -1,4 +1,4 @@
-﻿param (
+param (
 	[Alias('config', 'c')]
 	[String]$ConfigFile = 'config.json',
 	[String]$BlockedExe,
@@ -131,6 +131,7 @@ function Read-Answer
 		[ValidateSet('OK', 'YesNo')]
 		$Buttons,
 		[string]$Title = [System.IO.Path]::GetFileNameWithoutExtension($InvocationExe),
+
 		[int]$Timeout = 0
 	)
 	$raw = @"
@@ -193,7 +194,7 @@ function Read-Answer
 				})
 		}
 	}
-	
+
 	if ($Timeout -ne 0)
 	{
 		Function Timer_Tick()
@@ -412,6 +413,7 @@ $LogTable = @{
 	UnexpectedError		    = "unknown error:"
 	is64BitOS			    = "OS 64bit: {0}"
 	is64BitProcess		    = "Powershell 64bit: {0}"
+	User					= 'user logon: {0}'
 	RebootExitcodes		    = "ExitCodes require restart: {0}"
 	WorkingDirectory	    = 'Working Directory: {0}'
 	Executionpolicy		    = 'Executionpolicy: {0}'
@@ -520,6 +522,7 @@ try
 	Write-Log -Message ([String]::Format($LogTable.is64BitOS, $is64Bit.tostring()))
 	Write-Log -Message ([String]::Format($LogTable.is64BitProcess, $is64BitProcess.tostring()))
 	Write-Log -Message ([String]::Format($LogTable.Executionpolicy, (Get-ExecutionPolicy)))
+	Write-Log -Message ([String]::Format($LogTable.User, ((Get-WmiObject -Class Win32_ComputerSystem).username)))
 	
 	
 	#region Variable validation
@@ -652,7 +655,7 @@ try
 				Throw [CustomException]::new('CancelInstall', ([String]::Format($LogTable.CancelInstall, ($BlockExeProcesses.name -join '|'))))
 			}
 		}
-		
+	
 		# block exe execution for eache exe
 		foreach ($ExeFile in $Config.BlockExe)
 		{
@@ -888,6 +891,10 @@ finally
 				Run-Task -ScriptPath $Script.File -Parameters $Script.Parameter
 			}
 		}
+	}elseif ($canceled) {
+		$ExitCode = $ExitCodes.Canceled
+		Write-Log -Message ([String]::Format($LogTable.Exit, $Config.ProgramName))
+		Write-Log -Message $Error
 	}
 	elseif ($canceled)
 	{
