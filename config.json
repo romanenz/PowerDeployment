@@ -33,6 +33,7 @@
 "PostTask":[],
 "ErrorTask":[],
 "RebootRequiredExitCodes":["1610","3010"],
-"ProcessTimeOut":"300"
-"Picture":""
+"ProcessTimeOut":"300",
+"CancelCountLimit":"3",
+"Picture":"$$pwd$$\\logo.png"
 }

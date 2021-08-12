@@ -1,19 +1,4 @@
-﻿<#	
-    .NOTES
-    ===========================================================================
-	 Modified on:   23.12.2020
-    Created by:    roman.enz
-    Organization:  esolva ag
-     Version:       0.4
-    ===========================================================================
-    .DESCRIPTION
-
-    .LINK
-        GIT
-    .LINK
-        XWiki 
-#>
-param (
+﻿param (
 	[Alias('config', 'c')]
 	[String]$ConfigFile = 'config.json',
 	[String]$BlockedExe,
@@ -22,7 +7,7 @@ param (
 	[switch]$ForceReboot = $false
 	
 )
-$ExitCode = 5
+$ExitCode = -2
 # Load assembly
 Add-Type -AssemblyName "System.Windows.Forms"
 
@@ -42,7 +27,8 @@ function _Get-Process()
 	if ($Check -eq $true)
 	{
 		$Counter = 0
-		While ($process -ne $null -and $Counter -lt 4) {
+		While ($process -ne $null -and $Counter -lt 4)
+		{
 			$process = Get-Process | Where-Object {
 				$_.Product -match $Name -or $_.Description -match $Name
 			}
@@ -144,7 +130,8 @@ function Read-Answer
 		[string]$Messsage,
 		[ValidateSet('OK', 'YesNo')]
 		$Buttons,
-		[string]$Title = [System.IO.Path]::GetFileNameWithoutExtension($InvocationExe)
+		[string]$Title = [System.IO.Path]::GetFileNameWithoutExtension($InvocationExe),
+		[int]$Timeout = 0
 	)
 	$raw = @"
 <Window x:Name="PowerDeploy" x:Class="WpfApp1.MainWindow"
@@ -154,7 +141,7 @@ function Read-Answer
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:WpfApp1"
         mc:Ignorable="d"
-        Title="{0}" Height="250" Width="400" VerticalAlignment="Top" HorizontalAlignment="Left" WindowStartupLocation="CenterScreen" ResizeMode="NoResize">
+        Title="{0}" Height="300" Width="400" VerticalAlignment="Top" HorizontalAlignment="Left" WindowStartupLocation="CenterScreen" ResizeMode="NoResize">
     <Grid x:Name="ContentGrid">
         <Image x:Name="image" Margin="10,10,0,0" HorizontalAlignment="Left" Width="100" Height="50" VerticalAlignment="Top" Source="{1}"/>
         {2}
@@ -178,7 +165,7 @@ function Read-Answer
 	{
 		$Messsage = $Messsage.Insert($Messsage.Substring(0, (60 * $i)).LastIndexOf(' ') + 1, '&#10;')
 	}
-	$Label = '<Label x:Name="Body" Content="{0}" HorizontalContentAlignment="Center" Margin="20,69,20,0" Height="40" VerticalAlignment="Top"/>' -f $Messsage
+	$Label = '<Label x:Name="Body" Content="{0}" HorizontalContentAlignment="Center" Margin="20,69,20,0" Height="auto" VerticalAlignment="Top"/>' -f $Messsage
 	
 	$Controls = $Label
 	$Controls += $Button
@@ -205,6 +192,28 @@ function Read-Answer
 					return
 				})
 		}
+	}
+	
+	if ($Timeout -ne 0)
+	{
+		Function Timer_Tick()
+		{
+			--$Script:CountDown
+			if ($Script:CountDown -lt 0)
+			{
+				$Timer.Stop();
+				$Form.Close();
+				$Timer.Dispose();
+				$Script:CountDown = 5
+			}
+		}
+		Write-Log -Message ([string]::Format($LogTable.ReadAnswerTimeout, $Timeout))
+		$Timer = New-Object System.Windows.Forms.Timer
+		$Timer.Interval = 1000
+		$Script:CountDown = $Timeout
+		
+		$Timer.Add_Tick({ Timer_Tick })
+		$Timer.Start()
 	}
 	$Form.ShowDialog()
 }
@@ -259,7 +268,7 @@ function Unblock-AppExecution()
 		else
 		{
 			# Writes message if not blocked
-			Write-Warning ([string]::Format($stringTable.WarningFileNotBlocked, $File))
+			Write-Log -Message ([string]::Format($LogTable.WarningFileNotBlocked, $File))
 		}
 	}
 }
@@ -292,10 +301,13 @@ $is64BitProcess = [Environment]::Is64BitProcess
 
 # text messages
 $LocalizedData = @{
-	"de-DE"	       = @{
+	"de-DE"	      = @{
 		MessageTitle				 = "Programm Installation"
 		QuestionCloseApplication	 = "{0} wird noch ausgeführt. Programm schliessen und die Installation fortsetzen?"
+		QuestionCloseBlockExe		 = "{0} wird installiert. Folgende Programme schliessen und die Installation fortsetzen? {1}"
 		InfoCloseApplication		 = "{0} wird geschlossen und die Installation fortgesetzt"
+		InfoCloseByRetrylimit	     = "{0} muss geschlossen werden. Die Installation kann nicht weiter verzögert werden."
+		InfoCloseByRetrylimitBlock   = "{0} wird installiert. Die Installation kann nicht weiter verzögert werden. Folgende Programme werden Geschlossen: {1}"
 		InfoCancelInstallation	     = "Die Installation von {0} wird abgebrochen und zu einem späteren Zeitpunkt erneut ausgeführt."
 		InfoInstallFinished		     = "Die Installation von {0} ist beendet."
 		QuestionReboot			     = "{0} Computer jetzt neustarten?"
@@ -319,10 +331,13 @@ $LocalizedData = @{
 			End			     = 'Installation beendet'
 		}
 	}
-	"en-EN"	       = @{
+	"en-EN"	      = @{
 		MessageTitle				 = "software installation"
 		QuestionCloseApplication	 = "{0} is still running. Close the program and continue the installation?"
-		InfoCloseApplication		 = "{0} is closed and the installation is continued"
+		QuestionCloseBlockExe	     = "{0} is being installed. Close the following programmes and continue the installation? {1}"
+		InfoCloseApplication		 = "{0} is closed and the installation is continued"		
+		InfoCloseByRetrylimit	     = "{0} must be closed. The installation cannot be delayed any further."
+		InfoCloseByRetrylimitBlock    = "{0} is being installed. The installation cannot be delayed any further. The following programmes are closed: {1}"
 		InfoCancelInstallation	     = "The installation of {0} will be aborted and run again at a later time."
 		InfoInstallFinished		     = "The installation of {0} is finished."
 		QuestionReboot			     = "{0} Restart computer now?"
@@ -367,8 +382,10 @@ $LogTable = @{
 	StartInstall		    = 'install...'
 	CancelInstall		    = 'installation of {0} was canceled by user'
 	VariableNotSet		    = 'variable  {0} not set'
+	RunningProcess			= 'process {0} is running'
 	StopProcess			    = 'terminating process: {0}'
-	StoppingService			= 'stopping service: {0}'
+	RetryLimitReached		= 'Limit of {0} retries reached'
+	StoppingService		    = 'stopping service: {0}'
 	ProcessRunning		    = "the process {0} could not be terminated"
 	RunTask				    = "Script {0} is executed with parameters: "
 	TaskComplete		    = "Script finished with status {0}."
@@ -384,8 +401,8 @@ $LogTable = @{
 	ExeFileError		    = "installing {0} finished with error: {1}"
 	UninstallMSI		    = "MSI uninstalling for {0} with parameters: {1}"
 	UninstallMSIError	    = "MSI uninstalling for {0} finished with error: {1}"
-	BlockApplication	    = "block start of {0}"
-	UnblockApplication	    = "unblock start of {0}"
+	BlockApplication	    = "block {0}"
+	UnblockApplication	    = "unblock {0}"
 	CleanUp				    = "clean up files"
 	PathNotFound		    = "file {0} not found"
 	Exit				    = "installation {0} aborted"
@@ -397,8 +414,10 @@ $LogTable = @{
 	is64BitProcess		    = "Powershell 64bit: {0}"
 	RebootExitcodes		    = "ExitCodes require restart: {0}"
 	WorkingDirectory	    = 'Working Directory: {0}'
-	Executionpolicy			= 'Executionpolicy: {0}'
+	Executionpolicy		    = 'Executionpolicy: {0}'
 	ExitCode			    = 'Completed with exitcode {0}'
+	ReadAnswerTimeout	    = 'wait for {0}s to answer'
+	WarningFileNotBlocked   = 'file {0} not blocked'
 }
 
 $ReceivedExitCodes = @()
@@ -406,6 +425,7 @@ $ExitCodes = @{
 	Sucessfull		   = 0
 	RebootRequired	   = 1
 	Failed			   = 2
+	Canceled		   = 3
 	AdminRequired	   = -1
 }
 
@@ -426,6 +446,8 @@ Exitcodes:
 0  Sucessfull
 1  RebootRequired
 2  Failed
+3  Canceled by User
+101 Blocked Exe
 -1 AdminRequired
 '@
 	[System.Windows.Forms.MessageBox]::Show($Message, 'Help', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Question)
@@ -436,7 +458,7 @@ elseif (![string]::IsNullOrEmpty($BlockedExe))
 {
 	$MessageTitle = [String]::Format($stringTable.MessageTitle)
 	$Answer = Read-Answer -Messsage ([String]::Format($stringTable.BlockedApplication, $BlockedExe)) -Title $MessageTitle -Buttons OK
-	$ExitCode = 4
+	$ExitCode = 101
 	exit
 }
 
@@ -450,28 +472,31 @@ else
 	$WorkingDirectory = [System.IO.Path]::GetDirectoryName($ConfigFile)
 }
 Set-Location $WorkingDirectory
-
-# Import configuration
-$Config = (Get-Content $ConfigFile).Replace('$$pwd$$', ($WorkingDirectory -replace '\\', '\\')) | ConvertFrom-Json
-
-$ProcessTimeOut = if ($Config.ProcessTimeOut) { $Config.ProcessTimeOut }
-else { 300 }
-
-$PopupPicture = if ($Config.Picture) { $Config.Picture }
-else { '' }
-
-$EventLogName = if ($Config.EventLogName) { $Config.EventLogName }
-else { 'Application' }
-
-$EventLogSource = if ($Config.EventLogSource) { $Config.EventLogSource }
-else { [System.IO.Path]::GetFileNameWithoutExtension($InvocationExe) }
-
-$EventID = if ($Config.EventID) { $Config.EventID }
-else { '1337' }
-
-
 try
 {
+	# Import configuration
+	$Config = (Get-Content $ConfigFile).Replace('$$pwd$$', ($WorkingDirectory -replace '\\', '\\')) | ConvertFrom-Json
+
+	$ProcessTimeOut = if ($Config.ProcessTimeOut) { $Config.ProcessTimeOut }
+	else { 300 }
+
+	$PopupPicture = if ($Config.Picture) { $Config.Picture }
+	else { '' }
+
+	$EventLogName = if ($Config.EventLogName) { $Config.EventLogName }
+	else { 'Application' }
+
+	$EventLogSource = if ($Config.EventLogSource) { $Config.EventLogSource }
+	else { [System.IO.Path]::GetFileNameWithoutExtension($InvocationExe) }
+
+	$EventID = if ($Config.EventID) { $Config.EventID }
+	else { '1337' }
+	
+	if ($null -ne $Config.CancelCountLimit)
+	{
+		$Config.CancelCountLimit = $Config.CancelCountLimit -as [int]
+	}
+	
 	If (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator"))
 	{
 		Throw ([string]::Format($stringTable.ErrorMissingAdmin, $env:USERNAME))
@@ -536,14 +561,29 @@ try
 	# If the process is running, ask user if this can be closed
 	if ($process -and $Silent -eq $false)
 	{
-		Write-Log -Message ([String]::Format($LogTable.StopProcess, $process.name))
-		# ask user if process can be closed 
-		$MessageTitle = [String]::Format($stringTable.MessageTitle)
-		$Answer = Read-Answer -Messsage ([String]::Format($stringTable.QuestionCloseApplication, $Config.ProgramName)) -Title $MessageTitle -Buttons YesNo
+		Write-Log -Message ([String]::Format($LogTable.RunningProcess, $process.name))
+		# check if cancel count is set and get canceld events
+		if (![string]::IsNullOrEmpty($Config.CancelCountLimit))
+		{
+			$CanceledEvents = Get-EventLog -LogName $EventLogName -InstanceId $EventID -After (Get-Date).AddDays(-3) | Where-Object { $_.Message -match $Config.ProgramName -and $_.Message -match "exitcode $($ExitCodes.Canceled)" }
+		}
+		if ([string]::IsNullOrEmpty($Config.CancelCountLimit) -or ($Config.CancelCountLimit -gt $CanceledEvents.count))
+		{
+			# ask user if process can be closed 
+			$MessageTitle = [String]::Format($stringTable.MessageTitle)
+			$Answer = Read-Answer -Messsage ([String]::Format($stringTable.QuestionCloseApplication, $Config.ProgramName)) -Title $MessageTitle -Buttons YesNo
+			$CloseAppMessage = ([String]::Format($stringTable.InfoCloseApplication, $Config.ProgramName))
+		}
+		else
+		{
+			$Answer = $true
+			$CloseAppMessage = ([String]::Format($stringTable.InfoCloseByRetrylimit, $Config.ProgramName))
+			Write-Log -Message ([String]::Format($LogTable.RetryLimitReached, $Config.CancelCountLimit))
+		}
 		If ($Answer -eq $true)
 		{
 			# if answer is yes, stop process
-			$Answer = Read-Answer -Messsage ([String]::Format($stringTable.InfoCloseApplication, $Config.ProgramName)) -Title $MessageTitle -Buttons OK
+			$Answer = Read-Answer -Messsage $CloseAppMessage -Title $MessageTitle -Buttons OK
 			$process | Stop-Process -Force
 			
 			# Write log
@@ -574,6 +614,45 @@ try
 	}
 	if ($Config.BlockExe)
 	{
+		# check if exe is running and close
+		$BlockExeProcesses = Get-Process | Where-Object { [System.IO.Path]::GetFileName($_.Path) -in $Config.BlockExe }
+		if ($null -ne $BlockExeProcesses)
+		{
+			if (![string]::IsNullOrEmpty($Config.CancelCountLimit))
+			{
+				$CanceledEvents = Get-EventLog -LogName $EventLogName -InstanceId $EventID -After (Get-Date).AddDays(-3) | Where-Object { $_.Message -match $Config.ProgramName -and $_.Message -match "exitcode $($ExitCodes.Canceled)" }
+			}
+			if ([string]::IsNullOrEmpty($Config.CancelCountLimit) -or ($Config.CancelCountLimit -gt $CanceledEvents.count))
+			{
+				$Answer = Read-Answer -Messsage ([String]::Format($stringTable.QuestionCloseBlockExe, $Config.ProgramName, ($BlockExeProcesses.Product -join ', '))) -Title ([String]::Format($stringTable.MessageTitle)) -Buttons YesNo
+				$CloseAppMessage = ([String]::Format($stringTable.InfoCloseApplication, $Config.ProgramName))
+			}
+			else
+			{
+				$Answer = $true
+				$CloseAppMessage = ([String]::Format($stringTable.InfoCloseByRetrylimitBlock, $Config.ProgramName, ($BlockExeProcesses.Product -join ', ')))
+			}
+			If ($Answer -eq $true)
+			{
+				# if answer is yes, stop process
+				$Answer = Read-Answer -Messsage $CloseAppMessage -Title ([String]::Format($stringTable.MessageTitle)) -Buttons OK
+				$BlockExeProcesses | Stop-Process -Force
+				
+				# Write log
+				Write-Log -Message ([String]::Format($LogTable.StopProcess, ($BlockExeProcesses.Name -join '|')))
+				# set variable for userinformation about finishing installation
+				$InfoInstallFinished = $true
+			}
+			else
+			{
+				# inform user, installation will start later again
+				$Answer = Read-Answer -Messsage ([String]::Format($stringTable.InfoCancelInstallation, $Config.ProgramName)) -Title ([String]::Format($stringTable.MessageTitle)) -Buttons OK
+				
+				# Write log
+				Throw [CustomException]::new('CancelInstall', ([String]::Format($LogTable.CancelInstall, ($BlockExeProcesses.name -join '|'))))
+			}
+		}
+		
 		# block exe execution for eache exe
 		foreach ($ExeFile in $Config.BlockExe)
 		{
@@ -581,6 +660,7 @@ try
 			Write-Log -Message ([String]::Format($LogTable.BlockApplication, $ExeFile))
 			Block-AppExecution -Name $ExeFile
 		}
+		
 	}
 	
 	if ($process)
@@ -588,9 +668,10 @@ try
 		$Service = Get-CimInstance -class win32_service | Where-Object  {
 			$_.Name -match $Config.ProgramName -or $_.Description -match $Config.ProgramName -or $_.DisplayName -match $Config.ProgramName
 		}
-		if ($Service -ne $null) {
+		if ($Service -ne $null)
+		{
 			Write-Log -Message ([String]::Format($LogTable.StoppingService, $Service.name))
-			$Service.Name | Stop-Service -Force			
+			$Service.Name | Stop-Service -Force
 		}
 		# Check whether the process is running. If not, start installation
 		$process = _Get-Process -Name $Config.ProgramName -Check
@@ -763,17 +844,16 @@ catch [System.Management.Automation.SessionStateException] {
 catch [CustomException] {
 	$aborded = $true
 	$Message = $_.Exception
-	if ($_.Exception -like "CancelInstall")
+	switch -regex ($_.Exception)
 	{
-	}
-	if ($_.Exception -like "ProcessRunning")
-	{
-	}
-	if ($_.Exception -like "TaskError")
-	{
-	}
-	if ($_.Exception -like "ExeError")
-	{
+		'CancelInstall' {
+			$canceled = $true
+			$Message = 'canceled by user'
+		}
+		'ProcessRunning' { }
+		'TaskError' { }
+		'ExeError' { }
+		Default { }
 	}
 	Write-Log -Message $Message
 }
@@ -796,7 +876,7 @@ finally
 	$ExitCode = $ExitCodes.Sucessfull
 	#region finnaly
 	Process_Bar -status $ProcessBar.CleanUp -percent 95
-	if ($aborded)
+	if ($aborded -and -not $canceled)
 	{
 		$ExitCode = $ExitCodes.Failed
 		Write-Log -Message ([String]::Format($LogTable.Exit, $Config.ProgramName))
@@ -808,6 +888,12 @@ finally
 				Run-Task -ScriptPath $Script.File -Parameters $Script.Parameter
 			}
 		}
+	}
+	elseif ($canceled)
+	{
+		$ExitCode = $ExitCodes.Canceled
+		Write-Log -Message ([String]::Format($LogTable.Exit, $Config.ProgramName))
+		Write-Log -Message $Error
 	}
 	if ($Config.BlockExe)
 	{
@@ -839,7 +925,7 @@ finally
 	}
 	if (-not $aborded)
 	{
-		$RebootExitcodes = (Compare-Object -ReferenceObject $ReceivedExitCodes -DifferenceObject @($Config.RebootRequiredExitCodes | Select-Object) -ExcludeDifferent -IncludeEqual ).InputObject
+		$RebootExitcodes = (Compare-Object -ReferenceObject $ReceivedExitCodes -DifferenceObject @($Config.RebootRequiredExitCodes | Select-Object) -ExcludeDifferent -IncludeEqual).InputObject
 		if ($RebootExitcodes)
 		{
 			Write-Log -Message ([String]::Format($LogTable.RebootExitcodes, $RebootExitcodes))
@@ -891,6 +977,7 @@ finally
 	{
 		$ExitCodes.Sucessfull { $EntryType = 'Information' }
 		$ExitCodes.RebootRequired { $EntryType = 'Information' }
+		$ExitCodes.Canceled { $EntryType = 'Warning' }
 		$ExitCodes.Failed { $EntryType = 'Error' }
 		
 	}
