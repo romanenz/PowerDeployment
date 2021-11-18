@@ -1,4 +1,4 @@
-param (
+﻿param (
 	[Alias('config', 'c')]
 	[String]$ConfigFile = 'config.json',
 	[String]$BlockedExe,
@@ -307,8 +307,8 @@ $LocalizedData = @{
 		QuestionCloseApplication	 = "{0} wird noch ausgeführt. Programm schliessen und die Installation fortsetzen?"
 		QuestionCloseBlockExe		 = "{0} wird installiert. Folgende Programme schliessen und die Installation fortsetzen? {1}"
 		InfoCloseApplication		 = "{0} wird geschlossen und die Installation fortgesetzt"
-		InfoCloseByRetrylimit	     = "{0} muss geschlossen werden. Die Installation kann nicht weiter verzögert werden."
-		InfoCloseByRetrylimitBlock   = "{0} wird installiert. Die Installation kann nicht weiter verzögert werden. Folgende Programme werden Geschlossen: {1}"
+		InfoCloseByRetrylimit	     = "{0} wird geschlossen. Die Installation kann nicht weiter verzögert werden."
+		InfoCloseByRetrylimitBlock   = "{0} wird installiert. Die Installation kann nicht weiter verzögert werden. Folgende Programme werden geschlossen: {1}"
 		InfoCancelInstallation	     = "Die Installation von {0} wird abgebrochen und zu einem späteren Zeitpunkt erneut ausgeführt."
 		InfoInstallFinished		     = "Die Installation von {0} ist beendet."
 		QuestionReboot			     = "{0} Computer jetzt neustarten?"
@@ -420,6 +420,7 @@ $LogTable = @{
 	ExitCode			    = 'Completed with exitcode {0}'
 	ReadAnswerTimeout	    = 'wait for {0}s to answer'
 	WarningFileNotBlocked   = 'file {0} not blocked'
+	InPlaceUpdate			= 'InPlaceUpdate: {0}'
 }
 
 $ReceivedExitCodes = @()
@@ -451,6 +452,7 @@ Exitcodes:
 3  Canceled by User
 101 Blocked Exe
 -1 AdminRequired
+äüö
 '@
 	[System.Windows.Forms.MessageBox]::Show($Message, 'Help', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Question)
 	$ExitCode = 3
@@ -490,9 +492,12 @@ try
 
 	$EventLogSource = if ($Config.EventLogSource) { $Config.EventLogSource }
 	else { [System.IO.Path]::GetFileNameWithoutExtension($InvocationExe) }
-
+	
 	$EventID = if ($Config.EventID) { $Config.EventID }
 	else { '1337' }
+	
+	$InPlaceUpdate = if ($Config.InPlaceUpdate) { $Config.InPlaceUpdate }
+	else { $false }
 	
 	if ($null -ne $Config.CancelCountLimit)
 	{
@@ -522,9 +527,11 @@ try
 	Write-Log -Message ([String]::Format($LogTable.is64BitOS, $is64Bit.tostring()))
 	Write-Log -Message ([String]::Format($LogTable.is64BitProcess, $is64BitProcess.tostring()))
 	Write-Log -Message ([String]::Format($LogTable.Executionpolicy, (Get-ExecutionPolicy)))
-	Write-Log -Message ([String]::Format($LogTable.User, ((Get-WmiObject -Class Win32_ComputerSystem).username)))
-	
-	
+	Write-Log -Message ([String]::Format($LogTable.InPlaceUpdate, $InPlaceUpdate))
+	if ((Get-WmiObject -Class Win32_ComputerSystem).username) {
+		Write-Log -Message ([String]::Format($LogTable.User, ((Get-WmiObject -Class Win32_ComputerSystem).username)))
+	}
+		
 	#region Variable validation
 	[Array]$FilePaths = @()
 	$FilePaths += $Config.Install."64Bit".File
@@ -562,7 +569,7 @@ try
 	$process = _Get-Process -Name $Config.ProgramName
 	
 	# If the process is running, ask user if this can be closed
-	if ($process -and $Silent -eq $false)
+	if ($process -and $Silent -eq $false -and $InPlaceUpdate -eq $false)
 	{
 		Write-Log -Message ([String]::Format($LogTable.RunningProcess, $process.name))
 		# check if cancel count is set and get canceld events
@@ -666,7 +673,7 @@ try
 		
 	}
 	
-	if ($process)
+	if ($process -and $InPlaceUpdate -eq $false)
 	{
 		$Service = Get-CimInstance -class win32_service | Where-Object  {
 			$_.Name -match $Config.ProgramName -or $_.Description -match $Config.ProgramName -or $_.DisplayName -match $Config.ProgramName
@@ -755,7 +762,7 @@ try
 			}
 			else
 			{
-				Write-Log -Message ([String]::Format($LogTable.UninstallError, $Program, $UninstallComand))
+				Write-Log -Message ([String]::Format($LogTable.UninstallNotFound, $Program.file))
 			}
 		}
 	}
