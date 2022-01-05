@@ -75,7 +75,7 @@ function Execute_ExeFile()
 	# Write log
 	Write-Log -Message ([String]::Format($LogTable.RunExeFileComplete, $file, $Proc.ExitCode))
 	# test if exitcode is greater or equal 1 -> error
-	$ReceivedExitCodes += $Proc.ExitCode
+	$Script:ReceivedExitCodes += $Proc.ExitCode
 	if ($Proc.ExitCode -notin $ExitCodes)
 	{
 		Throw [CustomException]::new('ExeError', ([String]::Format($LogTable.RunExeFileComplete, $file, $Proc.ExitCode)))
@@ -420,7 +420,8 @@ $LogTable = @{
 	ExitCode			    = 'Completed with exitcode {0}'
 	ReadAnswerTimeout	    = 'wait for {0}s to answer'
 	WarningFileNotBlocked   = 'file {0} not blocked'
-	InPlaceUpdate			= 'InPlaceUpdate: {0}'
+	InPlaceUpdate		    = 'InPlaceUpdate: {0}'
+	Copy					= 'Copy {0} to {1}'
 }
 
 $ReceivedExitCodes = @()
@@ -436,35 +437,6 @@ $Silent = if ($UI -eq 'none') { $true }
 else { $false }
 #endregion
 
-if ($Commandline -match '[\/-][\?]')
-{
-	$Message = @'
-Parameters:
--Configfile - Json configuration file
--BlockedExe - show BlockExe popup
--UI - define ui style none|basic|full
--ForceReboot - if ui set to none, force required reboot
-
-Exitcodes:
-0  Sucessfull
-1  RebootRequired
-2  Failed
-3  Canceled by User
-101 Blocked Exe
--1 AdminRequired
-äüö
-'@
-	[System.Windows.Forms.MessageBox]::Show($Message, 'Help', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Question)
-	$ExitCode = 3
-	exit
-}
-elseif (![string]::IsNullOrEmpty($BlockedExe))
-{
-	$MessageTitle = [String]::Format($stringTable.MessageTitle)
-	$Answer = Read-Answer -Messsage ([String]::Format($stringTable.BlockedApplication, $BlockedExe)) -Title $MessageTitle -Buttons OK
-	$ExitCode = 101
-	exit
-}
 
 # set working directory
 if ([string]::IsNullOrEmpty([System.IO.Path]::GetDirectoryName($ConfigFile)) -eq $true)
@@ -476,6 +448,85 @@ else
 	$WorkingDirectory = [System.IO.Path]::GetDirectoryName($ConfigFile)
 }
 Set-Location $WorkingDirectory
+
+if ($Commandline -match '[\/-][\?]')
+{
+	$Message = @'
+Parameters:
+-Configfile - Json configuration file
+-BlockedExe - show BlockExe popup
+-UI - define ui style none|basic|full
+-ForceReboot - if ui set to none, force required reboot
+-Template - create config template file
+-? - Show this help
+
+Exitcodes:
+0  Sucessfull
+1  RebootRequired
+2  Failed
+3  Canceled by User
+101 Blocked Exe
+-1 AdminRequired
+'@
+	[System.Windows.Forms.MessageBox]::Show($Message, 'Help', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Question)
+	$ExitCode = 3
+	exit
+}elseif ($Commandline -match '[\/-][(template)|(t)]') {
+$t = @'
+{
+"ProgramName":"",
+"LogFile":"",
+"BlockExe":[],
+"InPlaceUpdate":"false",
+"PreTask":[
+					 {
+						"File":"",
+						"Parameter":""
+					}
+				],
+"Uninstall":[
+					 {
+						"File":"",
+						"Parameter":"",
+						"ExitCodes":["0"]
+					}
+				],
+"Task":[],
+"Install":[
+					{
+						"File":"",
+						"Parameter":"",
+						"ExitCodes":["0"]
+					}
+				],
+"PostTask":[],
+"ErrorTask":[],
+"Copy":[
+					 {
+						"Source":"",
+						"Desitination":""
+					}
+				],
+"RebootRequiredExitCodes":["1610","3010"],
+"ProcessTimeOut":"300",
+"CancelCountLimit":"3",
+"Picture":"$$pwd$$\\logo.png"
+}
+'@
+	Write-Output $t >> "$($WorkingDirectory)\configtemplate.json"
+	
+	[System.Windows.Forms.MessageBox]::Show("Config saved to: $($WorkingDirectory)\configtemplate.json", 'Help', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Question)
+	$ExitCode = 3
+	exit
+}
+elseif (![string]::IsNullOrEmpty($BlockedExe))
+{
+	$MessageTitle = [String]::Format($stringTable.MessageTitle)
+	$Answer = Read-Answer -Messsage ([String]::Format($stringTable.BlockedApplication, $BlockedExe)) -Title $MessageTitle -Buttons OK
+	$ExitCode = 101
+	exit
+}
+
 try
 {
 	# Import configuration
@@ -612,7 +663,7 @@ try
 		# Check whether the process is running. If not, start installation
 		$process = _Get-Process -Name $Config.ProgramName -Check
 	}
-	elseif ($Silent -eq $true)
+	elseif ($Silent -eq $true -and $InPlaceUpdate -eq $false)
 	{
 		# close process
 		$process | Stop-Process -Force
@@ -836,6 +887,19 @@ try
 		foreach ($Script in $Config.PostTask)
 		{
 			Run-Task -ScriptPath $Script.File -Parameters $Script.Parameter
+		}
+	}
+	#endregion
+	
+	#region PostTask	
+	Process_Bar -status $ProcessBar.PostTask -percent 85
+	
+	if ($Config.Copy)
+	{
+		foreach ($Item in $Config.Copy)
+		{
+			Write-Log -Message ([String]::Format($LogTable.Copy, $Item.Source, $Item.Desitination))
+			Copy-Item -Path $Item.Source -Destination $Item.Desitination
 		}
 	}
 	#endregion
