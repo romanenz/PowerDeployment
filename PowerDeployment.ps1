@@ -663,7 +663,7 @@ try
 		# Check whether the process is running. If not, start installation
 		$process = _Get-Process -Name $Config.ProgramName -Check
 	}
-	elseif ($Silent -eq $true -and $InPlaceUpdate -eq $false)
+	elseif ($process -and $Silent -eq $true -and $InPlaceUpdate -eq $false)
 	{
 		# close process
 		$process | Stop-Process -Force
