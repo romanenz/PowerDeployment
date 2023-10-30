@@ -691,13 +691,13 @@ try
 			}
 			if ([string]::IsNullOrEmpty($Config.CancelCountLimit) -or ($Config.CancelCountLimit -gt $CanceledEvents.count))
 			{
-				$Answer = Read-Answer -Messsage ([String]::Format($stringTable.QuestionCloseBlockExe, $Config.ProgramName, ($BlockExeProcesses.Product -join ', '))) -Title ([String]::Format($stringTable.MessageTitle)) -Buttons YesNo
+				$Answer = Read-Answer -Messsage ([String]::Format($stringTable.QuestionCloseBlockExe, $Config.ProgramName, (($BlockExeProcesses.Product | Group-Object).name -join ', '))) -Title ([String]::Format($stringTable.MessageTitle)) -Buttons YesNo
 				$CloseAppMessage = ([String]::Format($stringTable.InfoCloseApplication, $Config.ProgramName))
 			}
 			else
 			{
 				$Answer = $true
-				$CloseAppMessage = ([String]::Format($stringTable.InfoCloseByRetrylimitBlock, $Config.ProgramName, ($BlockExeProcesses.Product -join ', ')))
+				$CloseAppMessage = ([String]::Format($stringTable.InfoCloseByRetrylimitBlock, $Config.ProgramName, (($BlockExeProcesses.Product | Group-Object).name -join ', ')))
 			}
 			If ($Answer -eq $true)
 			{

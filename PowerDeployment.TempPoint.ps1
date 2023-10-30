@@ -111,7 +111,7 @@ function Run-Task()
 	$ScriptContent = Get-Content $ScriptPath -Raw
 	$ScriptBlock = [System.Management.Automation.ScriptBlock]::Create($ScriptContent)
 	
-	$job = Start-Job -ScriptBlock $scriptblock -ArgumentList $Param -InitializationScript ([ScriptBlock]::Create("Set-Location $pwd;Set-Variable -Name ErrorActionPreference -Value SilentlyContinue")) -ErrorAction Stop
+	$job = Start-Job -ScriptBlock $scriptblock -ArgumentList $Param -InitializationScript ([ScriptBlock]::Create("Set-Location '$pwd';Set-Variable -Name ErrorActionPreference -Value SilentlyContinue")) -ErrorAction Stop
 	Receive-Job $job -Wait -AutoRemoveJob
 	
 	# Write log
@@ -131,7 +131,6 @@ function Read-Answer
 		[ValidateSet('OK', 'YesNo')]
 		$Buttons,
 		[string]$Title = [System.IO.Path]::GetFileNameWithoutExtension($InvocationExe),
-
 		[int]$Timeout = 0
 	)
 	$raw = @"
@@ -194,7 +193,7 @@ function Read-Answer
 				})
 		}
 	}
-
+	
 	if ($Timeout -ne 0)
 	{
 		Function Timer_Tick()
@@ -302,24 +301,24 @@ $is64BitProcess = [Environment]::Is64BitProcess
 
 # text messages
 $LocalizedData = @{
-	"de-DE"	      = @{
-		MessageTitle				 = "Programm Installation"
-		QuestionCloseApplication	 = "{0} wird noch ausgeführt. Programm schliessen und die Installation fortsetzen?"
-		QuestionCloseBlockExe		 = "{0} wird installiert. Folgende Programme schliessen und die Installation fortsetzen? {1}"
-		InfoCloseApplication		 = "{0} wird geschlossen und die Installation fortgesetzt"
-		InfoCloseByRetrylimit	     = "{0} wird geschlossen. Die Installation kann nicht weiter verzögert werden."
-		InfoCloseByRetrylimitBlock   = "{0} wird installiert. Die Installation kann nicht weiter verzögert werden. Folgende Programme werden geschlossen: {1}"
-		InfoCancelInstallation	     = "Die Installation von {0} wird abgebrochen und zu einem späteren Zeitpunkt erneut ausgeführt."
-		InfoInstallFinished		     = "Die Installation von {0} ist beendet."
-		QuestionReboot			     = "{0} Computer jetzt neustarten?"
-		InfoReboot				     = "Computer wird jetzt neugestartet!"
-		CancelReboot				 = "Bitte Computer später neustarten."
-		RebootMsg				     = "Installation benötigt einen Neustart."
-		BlockedApplication		     = "Das ausführen von {0} ist vorübergehend gesperrt"
-		yes						     = "Ja"
-		no						     = "Nein"
-		ok						     = "OK"
-		ProcessBar				     = @{
+	"de-DE"	       = @{
+		MessageTitle				  = "Programm Installation"
+		QuestionCloseApplication	  = "{0} wird noch ausgeführt. Programm schliessen und die Installation fortsetzen?"
+		QuestionCloseBlockExe		  = "{0} wird installiert. Folgende Programme schliessen und die Installation fortsetzen? {1}"
+		InfoCloseApplication		  = "{0} wird geschlossen und die Installation fortgesetzt"
+		InfoCloseByRetrylimit		  = "{0} wird geschlossen. Die Installation kann nicht weiter verzögert werden."
+		InfoCloseByRetrylimitBlock    = "{0} wird installiert. Die Installation kann nicht weiter verzögert werden. Folgende Programme werden geschlossen: {1}"
+		InfoCancelInstallation	      = "Die Installation von {0} wird abgebrochen und zu einem späteren Zeitpunkt erneut ausgeführt."
+		InfoInstallFinished		      = "Die Installation von {0} ist beendet."
+		QuestionReboot			      = "{0} Computer jetzt neustarten?"
+		InfoReboot				      = "Computer wird jetzt neugestartet!"
+		CancelReboot				  = "Bitte Computer später neustarten."
+		RebootMsg					  = "Installation benötigt einen Neustart."
+		BlockedApplication		      = "Das ausführen von {0} ist vorübergehend gesperrt"
+		yes						      = "Ja"
+		no						      = "Nein"
+		ok						      = "OK"
+		ProcessBar				      = @{
 			Start		     = "Installation wird gestartet"
 			PreTask		     = "Aufgabe vor der Deinstallation wird ausgeführt"
 			PreUninstall	 = "Deinstallation wird vorbereitet"
@@ -332,24 +331,24 @@ $LocalizedData = @{
 			End			     = 'Installation beendet'
 		}
 	}
-	"en-EN"	      = @{
-		MessageTitle				 = "software installation"
-		QuestionCloseApplication	 = "{0} is still running. Close the program and continue the installation?"
-		QuestionCloseBlockExe	     = "{0} is being installed. Close the following programmes and continue the installation? {1}"
-		InfoCloseApplication		 = "{0} is closed and the installation is continued"		
-		InfoCloseByRetrylimit	     = "{0} must be closed. The installation cannot be delayed any further."
-		InfoCloseByRetrylimitBlock    = "{0} is being installed. The installation cannot be delayed any further. The following programmes are closed: {1}"
-		InfoCancelInstallation	     = "The installation of {0} will be aborted and run again at a later time."
-		InfoInstallFinished		     = "The installation of {0} is finished."
-		QuestionReboot			     = "{0} Restart computer now?"
-		InfoReboot				     = "Computer will be restarted now!"
-		CancelReboot				 = "Please restart computer later."
-		RebootMsg				     = "Installation requires a reboot."
-		BlockedApplication		     = "Running {0} is temporarily blocked"
-		yes						     = "Yes"
-		no						     = "No"
-		ok						     = "OK"
-		ProcessBar				     = @{
+	"en-EN"	       = @{
+		MessageTitle				   = "software installation"
+		QuestionCloseApplication	   = "{0} is still running. Close the program and continue the installation?"
+		QuestionCloseBlockExe		   = "{0} is being installed. Close the following programmes and continue the installation? {1}"
+		InfoCloseApplication		   = "{0} is closed and the installation is continued"
+		InfoCloseByRetrylimit		   = "{0} must be closed. The installation cannot be delayed any further."
+		InfoCloseByRetrylimitBlock	   = "{0} is being installed. The installation cannot be delayed any further. The following programmes are closed: {1}"
+		InfoCancelInstallation		   = "The installation of {0} will be aborted and run again at a later time."
+		InfoInstallFinished		       = "The installation of {0} is finished."
+		QuestionReboot				   = "{0} Restart computer now?"
+		InfoReboot					   = "Computer will be restarted now!"
+		CancelReboot				   = "Please restart computer later."
+		RebootMsg					   = "Installation requires a reboot."
+		BlockedApplication			   = "Running {0} is temporarily blocked"
+		yes						       = "Yes"
+		no							   = "No"
+		ok							   = "OK"
+		ProcessBar					   = @{
 			Start		     = "Installation wird gestartet"
 			PreTask		     = "Aufgabe vor der Deinstallation wird ausgeführt"
 			PreUninstall	 = "Deinstallation wird vorbereitet"
@@ -379,49 +378,50 @@ $ProcessBar = $stringTable.ProcessBar
 
 # log messages
 $LogTable = @{
-	Start				    = 'installation of {0} is started'
-	StartInstall		    = 'install...'
-	CancelInstall		    = 'installation of {0} was canceled by user'
-	VariableNotSet		    = 'variable  {0} not set'
-	RunningProcess			= 'process {0} is running'
-	StopProcess			    = 'terminating process: {0}'
-	RetryLimitReached		= 'Limit of {0} retries reached'
-	StoppingService		    = 'stopping service: {0}'
-	ProcessRunning		    = "the process {0} could not be terminated"
-	RunTask				    = "Script {0} is executed with parameters: "
-	TaskComplete		    = "Script finished with status {0}."
-	TaskError			    = "Script {0} finished with error: {1}"
-	StartUninstall		    = "uninstalling..."
-	Uninstall			    = "uninstalling {0}"
-	UninstallNotFound	    = "uninstall command for {0} not found"
-	UninstallError		    = "uninstall command for {0} finished with error: {1}"
-	RunExeFile			    = "running {0} with parameters: {1}"
-	RetryRunExeFile		    = "{0} endet with error {1} retry with parameters:: {2}"
-	RunExeFileComplete	    = '{0} finished with status {1}'
-	RunExeFileTimeout	    = '{0} has run into a timeout of {1}. process is terminated'
-	ExeFileError		    = "installing {0} finished with error: {1}"
-	UninstallMSI		    = "MSI uninstalling for {0} with parameters: {1}"
-	UninstallMSIError	    = "MSI uninstalling for {0} finished with error: {1}"
-	BlockApplication	    = "block {0}"
-	UnblockApplication	    = "unblock {0}"
-	CleanUp				    = "clean up files"
-	PathNotFound		    = "file {0} not found"
-	Exit				    = "installation {0} aborted"
-	Finish				    = "installation finished"
-	Reboot				    = "restarting computer"
-	CancelReboot		    = "restart aborted by user"
-	UnexpectedError		    = "unknown error:"
-	is64BitOS			    = "OS 64bit: {0}"
-	is64BitProcess		    = "Powershell 64bit: {0}"
-	User					= 'user logon: {0}'
-	RebootExitcodes		    = "ExitCodes require restart: {0}"
-	WorkingDirectory	    = 'Working Directory: {0}'
-	Executionpolicy		    = 'Executionpolicy: {0}'
-	ExitCode			    = 'Completed with exitcode {0}'
-	ReadAnswerTimeout	    = 'wait for {0}s to answer'
-	WarningFileNotBlocked   = 'file {0} not blocked'
-	InPlaceUpdate		    = 'InPlaceUpdate: {0}'
-	Copy					= 'Copy {0} to {1}'
+	Start				     = 'installation of {0} is started'
+	StartInstall			 = 'install...'
+	CancelInstall		     = 'installation of {0} was canceled by user'
+	VariableNotSet		     = 'variable  {0} not set'
+	RunningProcess		     = 'process {0} is running'
+	StopProcess			     = 'terminating process: {0}'
+	RetryLimitReached	     = 'Limit of {0} retries reached'
+	StoppingService		     = 'stopping service: {0}'
+	ProcessRunning		     = "the process {0} could not be terminated"
+	RunTask				     = "Script {0} is executed with parameters: "
+	TaskComplete			 = "Script finished with status {0}."
+	TaskError			     = "Script {0} finished with error: {1}"
+	StartUninstall		     = "uninstalling..."
+	Uninstall			     = "uninstalling {0}"
+	UninstallNotFound	     = "uninstall command for {0} not found"
+	UninstallError		     = "uninstall command for {0} finished with error: {1}"
+	RunExeFile			     = "running {0} with parameters: {1}"
+	RetryRunExeFile		     = "{0} endet with error {1} retry with parameters:: {2}"
+	RunExeFileComplete	     = '{0} finished with status {1}'
+	RunExeFileTimeout	     = '{0} has run into a timeout of {1}. process is terminated'
+	ExeFileError			 = "installing {0} finished with error: {1}"
+	UninstallMSI			 = "MSI uninstalling for {0} with parameters: {1}"
+	UninstallMSIError	     = "MSI uninstalling for {0} finished with error: {1}"
+	BlockApplication		 = "block {0}"
+	UnblockApplication	     = "unblock {0}"
+	CleanUp				     = "clean up files"
+	PathNotFound			 = "file {0} not found"
+	Exit					 = "installation {0} aborted"
+	Finish				     = "installation finished"
+	Reboot				     = "restarting computer"
+	CancelReboot			 = "restart aborted by user"
+	UnexpectedError		     = "unknown error:"
+	is64BitOS			     = "OS 64bit: {0}"
+	is64BitProcess		     = "Powershell 64bit: {0}"
+	User					 = 'user logon: {0}'
+	RebootExitcodes		     = "ExitCodes require restart: {0}"
+	WorkingDirectory		 = 'Working Directory: {0}'
+	Executionpolicy		     = 'Executionpolicy: {0}'
+	ExitCode				 = 'Completed with exitcode {0}'
+	ReadAnswerTimeout	     = 'wait for {0}s to answer'
+	WarningFileNotBlocked    = 'file {0} not blocked'
+	InPlaceUpdate		     = 'InPlaceUpdate: {0}'
+	Copy					 = 'Copy {0} to {1}'
+	Remove				     = 'Remove {0}'
 }
 
 $ReceivedExitCodes = @()
@@ -471,8 +471,10 @@ Exitcodes:
 	[System.Windows.Forms.MessageBox]::Show($Message, 'Help', [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Question)
 	$ExitCode = 3
 	exit
-}elseif ($Commandline -match '[\/-][(template)|(t)]') {
-$t = @'
+}
+elseif ($Commandline -match '[\/-][(template)|(t)]')
+{
+	$t = @'
 {
 "ProgramName":"",
 "LogFile":"",
@@ -507,6 +509,9 @@ $t = @'
 						"Desitination":""
 					}
 				],
+"Remove":[
+			"FilePath"
+],
 "RebootRequiredExitCodes":["1610","3010"],
 "ProcessTimeOut":"300",
 "CancelCountLimit":"3",
@@ -531,16 +536,16 @@ try
 {
 	# Import configuration
 	$Config = (Get-Content $ConfigFile).Replace('$$pwd$$', ($WorkingDirectory -replace '\\', '\\')) | ConvertFrom-Json
-
+	
 	$ProcessTimeOut = if ($Config.ProcessTimeOut) { $Config.ProcessTimeOut }
 	else { 300 }
-
+	
 	$PopupPicture = if ($Config.Picture) { $Config.Picture }
 	else { '' }
-
+	
 	$EventLogName = if ($Config.EventLogName) { $Config.EventLogName }
 	else { 'Application' }
-
+	
 	$EventLogSource = if ($Config.EventLogSource) { $Config.EventLogSource }
 	else { [System.IO.Path]::GetFileNameWithoutExtension($InvocationExe) }
 	
@@ -579,10 +584,11 @@ try
 	Write-Log -Message ([String]::Format($LogTable.is64BitProcess, $is64BitProcess.tostring()))
 	Write-Log -Message ([String]::Format($LogTable.Executionpolicy, (Get-ExecutionPolicy)))
 	Write-Log -Message ([String]::Format($LogTable.InPlaceUpdate, $InPlaceUpdate))
-	if ((Get-WmiObject -Class Win32_ComputerSystem).username) {
+	if ((Get-WmiObject -Class Win32_ComputerSystem).username)
+	{
 		Write-Log -Message ([String]::Format($LogTable.User, ((Get-WmiObject -Class Win32_ComputerSystem).username)))
 	}
-		
+	
 	#region Variable validation
 	[Array]$FilePaths = @()
 	$FilePaths += $Config.Install."64Bit".File
@@ -713,7 +719,7 @@ try
 				Throw [CustomException]::new('CancelInstall', ([String]::Format($LogTable.CancelInstall, ($BlockExeProcesses.name -join '|'))))
 			}
 		}
-	
+		
 		# block exe execution for eache exe
 		foreach ($ExeFile in $Config.BlockExe)
 		{
@@ -891,8 +897,8 @@ try
 	}
 	#endregion
 	
-	#region PostTask	
-	Process_Bar -status $ProcessBar.PostTask -percent 85
+	#region Copy	
+	Process_Bar -status $ProcessBar.PostTask -percent 95
 	
 	if ($Config.Copy)
 	{
@@ -900,6 +906,18 @@ try
 		{
 			Write-Log -Message ([String]::Format($LogTable.Copy, $Item.Source, $Item.Desitination))
 			Copy-Item -Path $Item.Source -Destination $Item.Desitination
+		}
+	}
+	#endregion
+	#region remove	
+	Process_Bar -status $ProcessBar.PostTask -percent 97
+	
+	if ($Config.Remove)
+	{
+		foreach ($Item in $Config.Remove)
+		{
+			Write-Log -Message ([String]::Format($LogTable.Remove, $Item))
+			Remove-Item -Path $Item -Force -ErrorAction Continue
 		}
 	}
 	#endregion
@@ -962,7 +980,9 @@ finally
 				Run-Task -ScriptPath $Script.File -Parameters $Script.Parameter
 			}
 		}
-	}elseif ($canceled) {
+	}
+	elseif ($canceled)
+	{
 		$ExitCode = $ExitCodes.Canceled
 		Write-Log -Message ([String]::Format($LogTable.Exit, $Config.ProgramName))
 		Write-Log -Message $Error
