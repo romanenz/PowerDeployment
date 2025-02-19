@@ -905,7 +905,7 @@ try
 		foreach ($Item in $Config.Copy)
 		{
 			Write-Log -Message ([String]::Format($LogTable.Copy, $Item.Source, $Item.Desitination))
-			Copy-Item -Path $Item.Source -Destination $Item.Desitination
+			Copy-Item -Path $Item.Source -Destination $Item.Desitination -Force -ErrorAction Continue -Recurse -Confirm:$false
 		}
 	}
 	#endregion
@@ -917,7 +917,7 @@ try
 		foreach ($Item in $Config.Remove)
 		{
 			Write-Log -Message ([String]::Format($LogTable.Remove, $Item))
-			Remove-Item -Path $Item -Force -ErrorAction Continue
+			Remove-Item -Path $Item -Force -ErrorAction Continue -Recurse -Confirm:$false
 		}
 	}
 	#endregion
