@@ -1,4 +1,13 @@
-﻿param (
+﻿<#
+    .NOTES
+        ===========================================================================
+        Modified on:    08.05.2025
+        Version:        0.2.26.0
+        ===========================================================================
+    .DESCRIPTION
+        script to install software
+#>
+param (
 	[Alias('config', 'c')]
 	[String]$ConfigFile = 'config.json',
 	[String]$BlockedExe,
@@ -791,6 +800,7 @@ try
 				{
 					# Write log
 					Write-Log -Message ([String]::Format($LogTable.Uninstall, $Program.File))
+					$UninstallComand = $UninstallComand.Trim('"').Trim("'")
 					# test if msiexec or exe uninstallation is needed
 					if ($UninstallComand -like "MsiExec*")
 					{
@@ -987,12 +997,6 @@ finally
 		Write-Log -Message ([String]::Format($LogTable.Exit, $Config.ProgramName))
 		Write-Log -Message $Error
 	}
-	elseif ($canceled)
-	{
-		$ExitCode = $ExitCodes.Canceled
-		Write-Log -Message ([String]::Format($LogTable.Exit, $Config.ProgramName))
-		Write-Log -Message $Error
-	}
 	if ($Config.BlockExe)
 	{
 		foreach ($ExeFile in $Config.BlockExe)
@@ -1003,14 +1007,8 @@ finally
 			Unblock-AppExecution -Name $ExeFile
 		}
 	}
-	
-	# clear unneeded data
-	Write-Log -Message ([String]::Format($LogTable.CleanUp))
-	
-	Remove-Item -Path (Join-Path -Path ${env:PUBLIC} -ChildPath ('\Desktop\*{0}*.lnk' -f $Config.ProgramName)) -Force
-	
+		
 	Process_Bar -status $ProcessBar.End -percent 100
-	
 	
 	# Write log
 	Write-Log -Message ([String]::Format($LogTable.Finish))
@@ -1023,6 +1021,10 @@ finally
 	}
 	if (-not $aborded)
 	{
+		# clear unneeded data
+		Write-Log -Message ([String]::Format($LogTable.CleanUp))
+		Remove-Item -Path (Join-Path -Path ${env:PUBLIC} -ChildPath ('\Desktop\*{0}*.lnk' -f $Config.ProgramName)) -Force
+		
 		$RebootExitcodes = (Compare-Object -ReferenceObject $ReceivedExitCodes -DifferenceObject @($Config.RebootRequiredExitCodes | Select-Object) -ExcludeDifferent -IncludeEqual).InputObject
 		if ($RebootExitcodes)
 		{
