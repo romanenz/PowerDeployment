@@ -2,7 +2,7 @@
     .NOTES
         ===========================================================================
         Modified on:    08.05.2025
-        Version:        0.2.26.0
+        Version:        0.2.27.0
         ===========================================================================
     .DESCRIPTION
         script to install software
@@ -458,7 +458,7 @@ else
 }
 Set-Location $WorkingDirectory
 
-if ($Commandline -match '[\/-][\?]')
+if ($Commandline -match '[\/-][\?h]')
 {
 	$Message = @'
 Parameters:
@@ -481,7 +481,7 @@ Exitcodes:
 	$ExitCode = 3
 	exit
 }
-elseif ($Commandline -match '[\/-][(template)|(t)]')
+elseif ($Commandline -match '\s[\/-](template|t)')
 {
 	$t = @'
 {
