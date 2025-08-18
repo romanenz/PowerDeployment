@@ -31,7 +31,7 @@ function _Get-Process()
 	)
 	$Name = [regex]::Escape($Name)
 	$process = Get-Process | Where-Object {
-		$_.Product -match $Name -or $_.Description -match $Name
+		$_.Product -match $Name -or $_.Description -match $Name -or $_.ProcessName -match $Name
 	}
 	if ($Check -eq $true)
 	{
